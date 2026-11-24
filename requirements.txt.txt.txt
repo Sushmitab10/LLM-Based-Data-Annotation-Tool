@@ -1,0 +1,4 @@
+streamlit
+fastapo
+uvicorn
+requests
