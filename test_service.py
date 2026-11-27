@@ -1,4 +1,4 @@
-from services.annotation_service import mock_annotate
+from annotation_service import mock_annotate
 
 test_sentences = [
     "I love this product",

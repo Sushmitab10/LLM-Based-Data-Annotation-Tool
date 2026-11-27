@@ -1,4 +1,4 @@
 streamlit
-fastapo
+fastapi
 uvicorn
 requests
