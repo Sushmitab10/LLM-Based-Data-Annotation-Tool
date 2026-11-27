@@ -1,4 +1,5 @@
 import sqlite3
+import os
 import pandas as pd
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -17,6 +18,7 @@ classifier = pipeline(
 
 def get_db():
     conn = sqlite3.connect("annotation_database.db")
+    print("DATABASE PATH:", os.path.abspath("annotation_database.db"))
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS datasets (
@@ -98,19 +100,31 @@ def update(annotation_id: int, new_label: str):
         raise HTTPException(status_code=400, detail="Invalid label")
 
     conn = get_db()
-    cursor = conn.execute(
-        "UPDATE annotations SET annotation=? WHERE id=?",
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "UPDATE annotations SET annotation = ? WHERE id = ?",
         (new_label, annotation_id)
     )
-    conn.commit()
-    updated = cursor.rowcount
-    conn.close()
 
-    if updated == 0:
+    conn.commit()
+
+    if cursor.rowcount == 0:
+        conn.close()
         raise HTTPException(status_code=404, detail="ID not found")
 
-    return {"message": "Annotation Updated Successfully"}
+    result = conn.execute(
+        "SELECT annotation FROM annotations WHERE id = ?",
+        (annotation_id,)
+    ).fetchone()
 
+    conn.close()
+
+    return {
+        "message": "Annotation updated successfully",
+        "id": annotation_id,
+        "updated_label": result[0]
+    }
 @app.delete("/delete/{annotation_id}")
 def delete(annotation_id: int):
     conn = get_db()
@@ -233,3 +247,7 @@ def get_datasets():
             for row in rows
         ]
     }
+if __name__ == "__main__":
+    conn = get_db()
+    conn.close()
+    print("Project database initialized successfully!")
