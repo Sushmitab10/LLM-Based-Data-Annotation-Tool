@@ -1,4 +1,3 @@
-
 import requests
 import streamlit as st
 import pandas as pd
@@ -11,6 +10,10 @@ st.set_page_config(
     page_icon="🏷️",
     layout="wide"
 )
+
+# Store AI results between Streamlit reruns
+if "ai_results_df" not in st.session_state:
+    st.session_state.ai_results_df = None
 
 # Application Header
 st.title("🏷️ AI-Based Data Annotation Tool")
@@ -29,29 +32,22 @@ try:
     datasets = dataset_response.json()["datasets"]
 
     total_datasets = len(datasets)
-
     annotated_data = sum(
         item["annotated_records"] for item in datasets
     )
-
     pending_data = sum(
         item["pending_records"] for item in datasets
     )
 
     col1, col2, col3 = st.columns(3)
 
-    with col1:
-        st.metric("Total Datasets", total_datasets)
-
-    with col2:
-        st.metric("Annotated Data", annotated_data)
-
-    with col3:
-        st.metric("Pending Data", pending_data)
+    col1.metric("Total Datasets", total_datasets)
+    col2.metric("Annotated Data", annotated_data)
+    col3.metric("Pending Data", pending_data)
 
 except Exception as e:
-        st.error(f"Dashboard error: {e}")
-    
+    st.error(f"Dashboard error: {e}")
+
 
 # Dataset Upload
 st.divider()
@@ -65,14 +61,13 @@ uploaded_file = st.file_uploader(
 df = None
 
 if uploaded_file is not None:
-
     try:
         df = pd.read_csv(uploaded_file)
-
         st.success("Dataset uploaded successfully!")
 
     except Exception as e:
         st.error(f"Error reading CSV: {e}")
+
 
 # Dataset Preview
 if df is not None:
@@ -83,10 +78,7 @@ if df is not None:
     st.write("Total Rows:", len(df))
     st.write("Total Columns:", len(df.columns))
 
-    st.dataframe(
-        df,
-        use_container_width=True
-    )
+    st.dataframe(df, use_container_width=True)
 
     st.info("Your dataset is ready for annotation!")
 
@@ -95,11 +87,9 @@ if df is not None:
     st.header("Manual Data Annotation")
 
     if len(df.columns) == 0:
-
         st.warning("Your dataset has no columns.")
 
     else:
-
         text_column = st.selectbox(
             "Select text column",
             df.columns
@@ -125,26 +115,24 @@ if df is not None:
             )
 
             if label != "Not Annotated":
-
                 st.session_state.annotations[index] = label
-
             else:
-
-                st.session_state.annotations.pop(
-                    index,
-                    None
-                )
+                st.session_state.annotations.pop(index, None)
 
         annotated_count = len(st.session_state.annotations)
         pending_count = len(df) - annotated_count
 
         col1, col2 = st.columns(2)
 
-        with col1:
-            st.metric("Manually Annotated Records", annotated_count)
+        col1.metric(
+            "Manually Annotated Records",
+            annotated_count
+        )
 
-        with col2:
-            st.metric("Pending Records", pending_count)
+        col2.metric(
+            "Pending Records",
+            pending_count
+        )
 
     # AI Annotation
     st.divider()
@@ -153,8 +141,9 @@ if df is not None:
     if st.button("Run AI Annotation", type="primary"):
 
         try:
-
             with st.spinner("AI is processing your dataset..."):
+
+                uploaded_file.seek(0)
 
                 response = requests.post(
                     f"{API_URL}/annotate-csv",
@@ -172,49 +161,57 @@ if df is not None:
 
                 result = response.json()
 
+                st.session_state.ai_results_df = pd.DataFrame(
+                    result["results"]
+                )
+
+                st.session_state.ai_dataset_id = result["dataset_id"]
+
                 st.success(
                     "AI annotation completed successfully!"
                 )
 
-                st.write(
-                    "Dataset ID:",
-                    result["dataset_id"]
-                )
-
-                st.write(
-                    "Total Records:",
-                    result["total_records"]
-                )
-
-                st.subheader("AI Annotation Results")
-
-                results_df = pd.DataFrame(
-                    result["results"]
-                )
-
-                st.dataframe(
-                    results_df,
-                    use_container_width=True
-                )
-
             else:
-
                 st.error(
                     f"Annotation failed: {response.text}"
                 )
 
         except requests.exceptions.RequestException as e:
+            st.error(f"Backend connection error: {e}")
 
-            st.error(
-                f"Backend connection error: {e}"
-            )
+
+    # Display AI Results and Download Button
+    if st.session_state.ai_results_df is not None:
+
+        st.write(
+            "Dataset ID:",
+            st.session_state.ai_dataset_id
+        )
+
+        st.subheader("AI Annotation Results")
+
+        st.dataframe(
+            st.session_state.ai_results_df,
+            use_container_width=True
+        )
+
+        csv_data = st.session_state.ai_results_df.to_csv(
+            index=False
+        ).encode("utf-8")
+
+        st.download_button(
+            label="📥 Download Annotated CSV",
+            data=csv_data,
+            file_name="annotated_dataset.csv",
+            mime="text/csv"
+        )
+
 
 # Dataset History
 st.divider()
 st.header("Dataset History")
 
 try:
-
     history_response = requests.get(
         f"{API_URL}/datasets",
         timeout=60
@@ -225,23 +222,22 @@ try:
     history_data = history_response.json()["datasets"]
 
     if history_data:
-
         history_df = pd.DataFrame(history_data)
 
         st.dataframe(
             history_df,
             use_container_width=True
         )
-
     else:
-
         st.info("No datasets uploaded yet.")
 
 except requests.exceptions.RequestException:
-
     st.warning("Dataset history is currently unavailable.")
+
 
 # Footer
 st.divider()
-st.caption("AI-Based Data Annotation Tool | Powered by FastAPI, Streamlit, SQLite and DistilBERT")
-
+st.caption(
+    "AI-Based Data Annotation Tool | Powered by FastAPI, "
+    "Streamlit, SQLite and DistilBERT"
+)
